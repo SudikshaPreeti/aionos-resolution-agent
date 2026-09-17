@@ -32,6 +32,11 @@ class GuardrailResult:
 
     fare_difference: Optional[float] = None
 
+    # Set when the customer asked for more than the policy allows, but a
+    # stated entitlement still applies to the same disruption. The agent
+    # grants the entitled portion and escalates only the excess.
+    partial_grant: bool = False
+
 
 class Guardrails:
 
@@ -99,11 +104,11 @@ class Guardrails:
     # ==========================================================
 
     FARE_PATTERN = re.compile(
-        r"(?:£|gbp)\s*"
+        r"(?:₹|rs\.?|inr)\s*"
         r"([0-9][0-9,]*(?:\.[0-9]+)?)"
         r"|"
         r"\b([0-9][0-9,]*(?:\.[0-9]+)?)\s*"
-        r"(?:pounds?|gbp)\b",
+        r"(?:rupees?|rs\.?|inr)\b",
         re.IGNORECASE,
     )
 
@@ -162,12 +167,12 @@ class Guardrails:
                 triggered=True,
                 category="fare_difference",
                 reason=(
-                    f"The requested fare difference of £{fare:,.0f} "
-                    "exceeds the £1,500 waiver limit and requires "
+                    f"The requested fare difference of ₹{fare:,.0f} "
+                    "exceeds the ₹1,500 waiver limit and requires "
                     "supervisor approval."
                 ),
                 matched_terms=[
-                    f"£{fare:,.0f}"
+                    f"₹{fare:,.0f}"
                 ],
                 fare_difference=fare,
             )
@@ -227,6 +232,9 @@ class Guardrails:
                         text,
                         self.FULL_NIGHT_PATTERNS,
                     ),
+                    # The delay itself qualifies under the more-than-5-hours
+                    # rule, so the delayed-hours entitlement still stands.
+                    partial_grant=True,
                 )
 
         # ======================================================

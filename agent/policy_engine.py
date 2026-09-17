@@ -253,14 +253,14 @@ class PolicyEngine:
                 intent=intent,
                 outcome="allowed",
                 allowed_actions=[
-                    "Issue £500 meal voucher"
+                    "Issue ₹500 meal voucher"
                 ],
                 rule_ids=[
                     "delay_compensation"
                 ],
                 explanation=(
                     "Under the delay compensation rule, a delay under "
-                    "3 hours qualifies for a £500 meal voucher."
+                    "3 hours qualifies for a ₹500 meal voucher."
                 ),
             )
 
@@ -284,7 +284,7 @@ class PolicyEngine:
                     escalation_category="fare_difference",
                     escalation_reason=(
                         f"The requested fare-difference waiver is "
-                        f"£{amount:,.0f}, which is above the £"
+                        f"₹{amount:,.0f}, which is above the ₹"
                         f"{threshold:,.0f} limit. Supervisor approval "
                         "is required."
                     ),
@@ -295,7 +295,7 @@ class PolicyEngine:
                         "Under the fare difference rule, voluntary "
                         "higher-fare rebooking requires the customer "
                         "to pay the difference. Agents cannot waive "
-                        "more than £1,500 without supervisor approval."
+                        "more than ₹1,500 without supervisor approval."
                     ),
                 )
 
