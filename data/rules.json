@@ -1,0 +1,74 @@
+{
+    "currency": "£",
+  
+    "rules": {
+      "cancellation_rebooking": {
+        "id": "cancellation_rebooking",
+        "text": "If a flight is cancelled by the airline, the customer gets free rebooking on the next available flight within 24 hours OR a full refund — customer's choice.",
+        "allowed_actions": [
+          "free_rebooking_within_24h",
+          "initiate_full_refund"
+        ],
+        "refund_processing": "Full refunds are processed within 7 business days to the original payment method only."
+      },
+  
+      "delay_compensation": {
+        "id": "delay_compensation",
+        "text": "Under 3 hours: £500 meal voucher. More than 3 hours: meal voucher + lounge access. More than 5 hours: meal voucher + hotel accommodation, covering ONLY the delayed hours, NOT a full night's stay.",
+  
+        "under_3_hours": {
+          "meal_voucher": "£500"
+        },
+  
+        "more_than_3_hours": [
+          "meal_voucher",
+          "lounge_access"
+        ],
+  
+        "more_than_5_hours": [
+          "meal_voucher",
+          "lounge_access",
+          "hotel_delayed_hours_only"
+        ]
+      },
+  
+      "fare_difference": {
+        "id": "fare_difference",
+        "text": "For voluntary rebooking on a higher-fare flight, the customer pays the fare difference. Agents cannot waive more than £1,500 without supervisor approval.",
+        "hard_escalation_threshold": 1500,
+        "customer_pays_difference": true
+      },
+  
+      "loyalty_tier": {
+        "id": "loyalty_tier",
+        "text": "Gold and Platinum customers get priority rebooking (first access to next-available seats) but NO additional compensation beyond standard policy.",
+        "priority_tiers": [
+          "Gold",
+          "Platinum"
+        ]
+      },
+  
+      "refund_processing": {
+        "id": "refund_processing",
+        "text": "Full refunds for airline-caused cancellations are processed within 7 business days and issued to the original payment method only.",
+        "processing_days": 7,
+        "original_payment_method_only": true
+      }
+    },
+  
+    "allowed_actions": [
+      "Rebook on next available flight within 24h at no charge (airline-caused)",
+      "Issue meal vouchers and lounge access per delay rule",
+      "Arrange hotel accommodation for delayed-hours portion where it qualifies",
+      "Initiate refund request for airline-caused cancellations",
+      "Provide customer's own booking and flight status information"
+    ],
+  
+    "prohibited_actions": [
+      "Approving any compensation beyond the stated policy amounts",
+      "Waiving fare difference above £1,500",
+      "Making exceptions for non-airline-caused disruptions",
+      "Handling threats of legal action or formal complaints — escalate immediately",
+      "Processing refunds to a different payment method than original"
+    ]
+  }

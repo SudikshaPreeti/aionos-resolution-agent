@@ -1,0 +1,26 @@
+{
+    "exercise_date": "2026-09-23",
+    "customers": [
+      {
+        "name": "Priya Nair",
+        "loyalty_tier": "Gold",
+        "booking_reference": "SK4821X",
+        "contact": "priya.nair@example.com, +91-98xxxxxxx1",
+        "travel_history": "6 flights, 1 prior complaint (delayed baggage, resolved with voucher)"
+      },
+      {
+        "name": "Arvind Kulkarni",
+        "loyalty_tier": "Silver",
+        "booking_reference": "TR1190B",
+        "contact": "arvind.kulkarni@example.com, +91-98xxxxxxx2",
+        "travel_history": "3 flights, no prior complaints"
+      },
+      {
+        "name": "Meher Kaur",
+        "loyalty_tier": "Platinum",
+        "booking_reference": "WL7742",
+        "contact": "meher.kaur@example.com, +91-98xxxxxxx3",
+        "travel_history": "10 flights, 1 prior complaint (overbooking, resolved with tier-status upgrade)"
+      }
+    ]
+  }
