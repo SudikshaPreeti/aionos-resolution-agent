@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import re
 
+from time import perf_counter
+
 from typing import Any, Dict, List, Optional
 
 
@@ -26,6 +28,8 @@ from .llm import LLM
 from .policy_engine import PolicyEngine
 
 from .response_generator import ResponseGenerator
+
+from .usage import LLMUsage, Pricing, TurnMetrics
 
 
 INTENTS = [
@@ -67,6 +71,8 @@ class Orchestrator:
         self.responses = ResponseGenerator()
 
         self.llm = LLM()
+
+        self.pricing = Pricing()
 
     # ==========================================================
     # CUSTOMER LOOKUP
@@ -260,6 +266,72 @@ class Orchestrator:
         return "unknown"
 
     # ==========================================================
+    # METRICS
+    # ==========================================================
+
+    def _metrics(
+        self,
+        *,
+        intent: str,
+        outcome: str,
+        rule_ids: List[str],
+        escalated: bool,
+        partial_grant: bool,
+        guardrail_ms: float,
+        policy_ms: float,
+        started: float,
+        response: str,
+        usage: Optional[LLMUsage] = None,
+        llm_skip_reason: Optional[str] = None,
+    ) -> TurnMetrics:
+        """
+        Assemble the accounting for one turn.
+
+        Turns that never reach a model still get a record — zero tokens
+        and zero cost is the useful number, not a missing one.
+        """
+
+        usage = usage or LLMUsage()
+
+        cost = self.pricing.cost(
+            usage.model,
+            usage.input_tokens,
+            usage.output_tokens,
+        )
+
+        spent_tokens = usage.total_tokens > 0
+
+        return TurnMetrics(
+            intent=intent,
+            outcome=outcome,
+            rule_ids=rule_ids,
+            escalated=escalated,
+            partial_grant=partial_grant,
+
+            guardrail_ms=guardrail_ms,
+            policy_ms=policy_ms,
+            llm_ms=usage.latency_ms,
+            total_ms=(perf_counter() - started) * 1000,
+
+            llm_used=spent_tokens,
+            llm_skip_reason=llm_skip_reason,
+
+            provider=usage.provider,
+            model=usage.model,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cache_read_tokens=usage.cache_read_tokens,
+            cache_write_tokens=usage.cache_write_tokens,
+
+            cost=cost if cost is not None else (0.0 if not spent_tokens else None),
+            currency=self.pricing.currency,
+            unpriced=spent_tokens and cost is None,
+            llm_error=usage.error,
+
+            response_chars=len(response),
+        )
+
+    # ==========================================================
     # MAIN HANDLER
     # ==========================================================
 
@@ -289,12 +361,16 @@ class Orchestrator:
             "delay_hours"
         )
 
+        started = perf_counter()
+
         # ======================================================
         # STEP 1
         # HARD GUARDRAILS
         #
         # This occurs BEFORE ANY LLM call.
         # ======================================================
+
+        guardrail_started = perf_counter()
 
         guardrail = self.guardrails.check(
             message,
@@ -303,6 +379,8 @@ class Orchestrator:
 
             conversation_history=history,
         )
+
+        guardrail_ms = (perf_counter() - guardrail_started) * 1000
 
         # ======================================================
         # STEP 2
@@ -325,6 +403,8 @@ class Orchestrator:
 
             if guardrail.partial_grant:
 
+                policy_started = perf_counter()
+
                 entitlement = self.policy.evaluate(
                     "delay",
 
@@ -334,6 +414,8 @@ class Orchestrator:
 
                     {},
                 )
+
+                policy_ms = (perf_counter() - policy_started) * 1000
 
                 if entitlement.outcome == "allowed":
 
@@ -370,6 +452,22 @@ class Orchestrator:
 
                         "llm_used": False,
 
+                        "metrics": self._metrics(
+                            intent="delay",
+                            outcome="partial_grant",
+                            rule_ids=entitlement.rule_ids,
+                            escalated=True,
+                            partial_grant=True,
+                            guardrail_ms=guardrail_ms,
+                            policy_ms=policy_ms,
+                            started=started,
+                            response=response,
+                            llm_skip_reason=(
+                                "Escalation path — wording is deterministic "
+                                "by design, so no model is called."
+                            ),
+                        ).to_dict(),
+
                         "customer": customer,
 
                         "booking": booking,
@@ -379,6 +477,8 @@ class Orchestrator:
                 guardrail.category
                 or "beyond_policy"
             )
+
+            policy_started = perf_counter()
 
             decision = self.policy.evaluate(
                 decision_intent,
@@ -392,6 +492,8 @@ class Orchestrator:
                         guardrail.fare_difference
                 },
             )
+
+            policy_ms = (perf_counter() - policy_started) * 1000
 
             response = (
                 self.responses.escalation_response(
@@ -422,6 +524,21 @@ class Orchestrator:
 
                 "llm_used": False,
 
+                "metrics": self._metrics(
+                    intent=decision_intent,
+                    outcome="escalate",
+                    rule_ids=decision.rule_ids,
+                    escalated=True,
+                    partial_grant=False,
+                    guardrail_ms=guardrail_ms,
+                    policy_ms=policy_ms,
+                    started=started,
+                    response=response,
+                    llm_skip_reason=(
+                        "Guardrail fired before any model call."
+                    ),
+                ).to_dict(),
+
                 "customer": customer,
 
                 "booking": booking,
@@ -431,6 +548,8 @@ class Orchestrator:
         # STEP 3
         # DETERMINISTIC INTENT
         # ======================================================
+
+        policy_started = perf_counter()
 
         intent = self.classify_intent(
             message,
@@ -451,6 +570,8 @@ class Orchestrator:
 
             {},
         )
+
+        policy_ms = (perf_counter() - policy_started) * 1000
 
         # ======================================================
         # STEP 5
@@ -494,6 +615,22 @@ class Orchestrator:
 
                 "llm_used": False,
 
+                "metrics": self._metrics(
+                    intent=intent,
+                    outcome="escalate",
+                    rule_ids=decision.rule_ids,
+                    escalated=True,
+                    partial_grant=False,
+                    guardrail_ms=guardrail_ms,
+                    policy_ms=policy_ms,
+                    started=started,
+                    response=response,
+                    llm_skip_reason=(
+                        "Policy engine escalated — wording is "
+                        "deterministic by design."
+                    ),
+                ).to_dict(),
+
                 "customer": customer,
 
                 "booking": booking,
@@ -521,7 +658,7 @@ class Orchestrator:
         # Only happens when there was no escalation.
         # ======================================================
 
-        final_response = self.llm.rewrite(
+        final_response, llm_usage = self.llm.rewrite(
             grounded_draft=draft,
 
             booking_context={
@@ -572,6 +709,25 @@ class Orchestrator:
 
             "llm_used":
                 self.llm.enabled(),
+
+            "metrics": self._metrics(
+                intent=intent,
+                outcome=decision.outcome,
+                rule_ids=decision.rule_ids,
+                escalated=False,
+                partial_grant=False,
+                guardrail_ms=guardrail_ms,
+                policy_ms=policy_ms,
+                started=started,
+                response=final_response,
+                usage=llm_usage,
+                llm_skip_reason=(
+                    None
+                    if self.llm.enabled()
+                    else "No provider configured (LLM_PROVIDER=none) — "
+                         "using the grounded template."
+                ),
+            ).to_dict(),
 
             "customer":
                 customer,

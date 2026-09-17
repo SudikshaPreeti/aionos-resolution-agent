@@ -4,6 +4,7 @@ from pathlib import Path
 import streamlit as st
 
 from agent.orchestrator import Orchestrator
+from agent.usage import summarize
 
 
 # ============================================================
@@ -20,6 +21,118 @@ st.set_page_config(
 # PATHS
 # ============================================================
 BASE_DIR = Path(__file__).resolve().parent
+
+
+# ============================================================
+# METRIC FORMATTING
+# ============================================================
+def fmt_cost(value, currency="USD", unpriced=False):
+    """
+    Money is shown at the precision it actually has. A single rephrasing
+    call costs a fraction of a cent, so two decimal places would print
+    every turn as $0.00 and hide the thing we are measuring.
+    """
+
+    if unpriced:
+        return "unpriced"
+
+    if value is None:
+        return "—"
+
+    symbol = "$" if currency == "USD" else f"{currency} "
+
+    if value == 0:
+        return f"{symbol}0.00"
+
+    if value < 0.01:
+        return f"{symbol}{value:.6f}"
+
+    return f"{symbol}{value:.4f}"
+
+
+def fmt_ms(value):
+    if value is None:
+        return "—"
+
+    if value < 1:
+        return f"{value:.2f} ms"
+
+    if value < 1000:
+        return f"{value:.0f} ms"
+
+    return f"{value / 1000:.2f} s"
+
+
+def render_turn_metrics(metrics):
+    """
+    The per-response accounting strip.
+    """
+
+    if not metrics:
+        return
+
+    llm_used = metrics.get("llm_used")
+
+    # Three metrics, not four: a fourth column is narrow enough that
+    # Streamlit truncates the value text.
+    c1, c2, c3 = st.columns(3)
+
+    c1.metric(
+        "Tokens",
+        f"{metrics.get('total_tokens', 0):,}",
+        help=(
+            f"{metrics.get('input_tokens', 0):,} in · "
+            f"{metrics.get('output_tokens', 0):,} out"
+        ),
+    )
+
+    c2.metric(
+        "Cost",
+        fmt_cost(
+            metrics.get("cost"),
+            metrics.get("currency", "USD"),
+            metrics.get("unpriced", False),
+        ),
+        help="Rates come from data/model_pricing.json.",
+    )
+
+    c3.metric(
+        "Latency",
+        fmt_ms(metrics.get("total_ms")),
+    )
+
+    st.caption(
+        "**Path:** "
+        + (
+            f"{metrics.get('provider')} · `{metrics.get('model')}`"
+            if llm_used
+            else "deterministic — no model call"
+        )
+        + f" &nbsp;•&nbsp; **Intent:** `{metrics.get('intent')}`"
+        + f" &nbsp;•&nbsp; **Outcome:** `{metrics.get('outcome')}`"
+    )
+
+    st.caption(
+        "**Where the time went:** "
+        f"guardrails {fmt_ms(metrics.get('guardrail_ms'))}"
+        f" &nbsp;•&nbsp; policy {fmt_ms(metrics.get('policy_ms'))}"
+        f" &nbsp;•&nbsp; phrasing {fmt_ms(metrics.get('llm_ms'))}"
+    )
+
+    if metrics.get("llm_error"):
+        st.warning(
+            "Phrasing call failed, so the grounded draft was sent "
+            f"unchanged: {metrics['llm_error']}"
+        )
+
+    if not llm_used and metrics.get("llm_skip_reason"):
+        st.caption(f"⚡ {metrics['llm_skip_reason']}")
+
+    if metrics.get("cache_read_tokens"):
+        st.caption(
+            f"Cache: {metrics['cache_read_tokens']:,} read · "
+            f"{metrics.get('cache_write_tokens', 0):,} written"
+        )
 
 
 # ============================================================
@@ -93,6 +206,49 @@ with st.sidebar:
             f"**Status:** {f['status']}"
         )
         st.write("")
+
+    st.divider()
+    st.subheader("Session cost")
+
+    session = summarize([
+        m.get("metrics")
+        for m in st.session_state.get("messages", [])
+        if m.get("role") == "assistant"
+    ])
+
+    if session["turns"] == 0:
+        st.caption("No responses yet.")
+    else:
+        s1, s2 = st.columns(2)
+        s1.metric("Responses", session["turns"])
+        s2.metric("Tokens", f"{session['total_tokens']:,}")
+
+        s3, s4 = st.columns(2)
+        s3.metric(
+            "Total cost",
+            fmt_cost(
+                session["cost"],
+                session["currency"],
+                session["unpriced"],
+            ),
+        )
+        s4.metric("Avg latency", fmt_ms(session["avg_ms"]))
+
+        # The headline number for this design: how much of the work never
+        # reached a model at all.
+        st.metric(
+            "Resolved without an LLM",
+            f"{session['deterministic_share'] * 100:.0f}%",
+            help=(
+                f"{session['deterministic_turns']} of {session['turns']} "
+                "responses cost zero tokens — guardrails and the policy "
+                "engine answered them outright."
+            ),
+        )
+
+        st.caption(
+            f"{session['escalated']} of {session['turns']} escalated to a human."
+        )
 
     st.divider()
     if st.button("Clear conversation", use_container_width=True):
@@ -196,6 +352,7 @@ if pending:
         "actions": result["actions"],
         "partial_grant": result.get("partial_grant", False),
         "llm_used": result["llm_used"],
+        "metrics": result.get("metrics", {}),
     })
     st.rerun()
 
@@ -226,6 +383,8 @@ for message in st.session_state.messages:
             st.write(message["content"])
             if message.get("rule_ids"):
                 st.caption("Rules used: " + ", ".join(message["rule_ids"]))
+            with st.expander("📊 Cost & performance for this response"):
+                render_turn_metrics(message.get("metrics"))
 
 
 # ============================================================
@@ -250,6 +409,7 @@ if prompt:
         "actions": result["actions"],
         "partial_grant": result.get("partial_grant", False),
         "llm_used": result["llm_used"],
+        "metrics": result.get("metrics", {}),
     })
     st.rerun()
 
@@ -271,4 +431,5 @@ with st.expander("🔍 Technical decision trace"):
                     "allowed_actions": message.get("actions"),
                     "partial_grant": message.get("partial_grant"),
                     "llm_used": message.get("llm_used"),
+                    "metrics": message.get("metrics"),
                 })

@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 
 from agent.orchestrator import Orchestrator
+from agent.usage import summarize
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -45,6 +46,9 @@ PNR_TO_NAME = {
 # ============================================================
 histories: dict[str, list[dict]] = {}
 
+# Every turn's metrics, rolled up at the end of the run.
+collected: list[dict] = []
+
 
 def run_test(agent, pnr, message):
     customer_name = PNR_TO_NAME[pnr]
@@ -75,6 +79,20 @@ def run_test(agent, pnr, message):
 
     if result.get("actions"):
         print(f"ACTIONS: {result['actions']}")
+
+    metrics = result.get("metrics", {})
+
+    if metrics:
+        collected.append(metrics)
+        print(
+            f"COST: {metrics['total_tokens']} tokens · "
+            f"{metrics['total_ms']:.2f} ms · "
+            + (
+                f"{metrics['provider']}/{metrics['model']}"
+                if metrics["llm_used"]
+                else "no model call"
+            )
+        )
 
     print(f"\nAGENT RESPONSE:\n{result.get('response')}")
 
@@ -153,6 +171,21 @@ def main():
     print("\n" + "#" * 70)
     print("TEST SUITE COMPLETED")
     print("#" * 70)
+
+    session = summarize(collected)
+
+    print(f"\nResponses:        {session['turns']}")
+    print(f"Tokens:           {session['total_tokens']:,}")
+    print(
+        f"Cost:             {session['cost']:.6f} {session['currency']}"
+        + (" (some turns unpriced)" if session["unpriced"] else "")
+    )
+    print(f"Escalated:        {session['escalated']}/{session['turns']}")
+    print(
+        f"No model call:    {session['deterministic_turns']}/{session['turns']}"
+        f" ({session['deterministic_share'] * 100:.0f}%)"
+    )
+    print(f"Avg latency:      {session['avg_ms']:.2f} ms")
 
 
 if __name__ == "__main__":

@@ -183,7 +183,39 @@ Any message containing legal-action or formal-complaint language escalates immed
 
 ---
 
-# 5. Project layout
+# 5. Cost and performance instrumentation
+
+Every response carries its own accounting, shown in the UI under **📊 Cost & performance for this response**:
+
+| Metric | What it tells you |
+|---|---|
+| Tokens | Input + output for that turn (hover for the split) |
+| Cost | Priced from `data/model_pricing.json` — never hardcoded |
+| Latency | Total, broken down into guardrails / policy / phrasing |
+| Path | Which layer produced the wording, plus intent and outcome |
+
+The sidebar rolls the conversation up: responses, total tokens, total cost, average latency, and the headline number — **what share of responses were resolved without an LLM at all**.
+
+That share is the point of the instrumentation. Because escalations and policy decisions never reach a model, a large fraction of turns cost exactly zero tokens and resolve in well under a millisecond. Running the three scenarios end to end:
+
+```text
+Responses:        8
+Tokens:           0
+Cost:             0.000000 USD
+Escalated:        6/8
+No model call:    8/8 (100%)
+Avg latency:      0.06 ms
+```
+
+With `LLM_PROVIDER=none` every turn is deterministic, so the whole conversation is free. Enable a provider and only the *non-escalated* turns begin spending tokens — the escalation paths stay at zero by construction, which is exactly the safety property the architecture claims.
+
+**Pricing is data, not code.** `data/model_pricing.json` holds USD rates per million tokens. A model with `null` rates still reports its token counts and is labelled `unpriced` rather than being costed with a guessed number, and a session total containing any unpriced turn is flagged so it is never mistaken for complete.
+
+Cache reads and writes are surfaced when the provider reports them, and a failed phrasing call is shown inline — the grounded draft is sent unchanged rather than the customer losing an answer.
+
+---
+
+# 6. Project layout
 
 ```text
 app.py                        Streamlit UI, scenario playback, decision trace
@@ -192,15 +224,17 @@ agent/guardrails.py           Pre-LLM prohibited-request detection
 agent/policy_engine.py        Deterministic rule application
 agent/response_generator.py   Grounded response text
 agent/llm.py                  Optional OpenAI / Anthropic phrasing
+agent/usage.py                Token, cost and latency accounting
 data/customers.json           Customer profiles
 data/bookings.json            Bookings and disruption status
 data/rules.json               Service rules, allowed and prohibited actions
+data/model_pricing.json       Token rates used for cost reporting
 test_agent.py                 Console walkthrough of all scenarios
 ```
 
 ---
 
-# 6. Design notes
+# 7. Design notes
 
 **Currency is ₹ (INR) throughout**, matching the data pack. The fare parser accepts `₹`, `Rs`, `Rs.`, `INR`, and `rupees`.
 
