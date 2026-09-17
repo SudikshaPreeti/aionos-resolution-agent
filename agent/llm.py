@@ -50,7 +50,7 @@ class LLM:
 
         self.anthropic_model = os.getenv(
             "ANTHROPIC_MODEL",
-            "claude-3-5-sonnet-latest"
+            "claude-sonnet-5"
         )
 
     def enabled(self) -> bool:

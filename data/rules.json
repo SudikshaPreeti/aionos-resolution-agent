@@ -1,5 +1,5 @@
 {
-    "currency": "£",
+    "currency": "₹",
   
     "rules": {
       "cancellation_rebooking": {
@@ -14,10 +14,10 @@
   
       "delay_compensation": {
         "id": "delay_compensation",
-        "text": "Under 3 hours: £500 meal voucher. More than 3 hours: meal voucher + lounge access. More than 5 hours: meal voucher + hotel accommodation, covering ONLY the delayed hours, NOT a full night's stay.",
+        "text": "Under 3 hours: ₹500 meal voucher. More than 3 hours: meal voucher + lounge access. More than 5 hours: meal voucher + hotel accommodation, covering ONLY the delayed hours, NOT a full night's stay.",
   
         "under_3_hours": {
-          "meal_voucher": "£500"
+          "meal_voucher": "₹500"
         },
   
         "more_than_3_hours": [
@@ -34,7 +34,7 @@
   
       "fare_difference": {
         "id": "fare_difference",
-        "text": "For voluntary rebooking on a higher-fare flight, the customer pays the fare difference. Agents cannot waive more than £1,500 without supervisor approval.",
+        "text": "For voluntary rebooking on a higher-fare flight, the customer pays the fare difference. Agents cannot waive more than ₹1,500 without supervisor approval.",
         "hard_escalation_threshold": 1500,
         "customer_pays_difference": true
       },
@@ -66,7 +66,7 @@
   
     "prohibited_actions": [
       "Approving any compensation beyond the stated policy amounts",
-      "Waiving fare difference above £1,500",
+      "Waiving fare difference above ₹1,500",
       "Making exceptions for non-airline-caused disruptions",
       "Handling threats of legal action or formal complaints — escalate immediately",
       "Processing refunds to a different payment method than original"

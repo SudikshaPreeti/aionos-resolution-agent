@@ -54,10 +54,20 @@ st.caption("AIONOS Assignment 3 • Airline Disruption • Policy-Grounded Proto
 # ============================================================
 customer_names = [c["name"] for c in customers_data["customers"]]
 
+# A scenario button queues a customer switch and reruns. Streamlit forbids
+# writing a widget's state after that widget exists, so apply the switch
+# here — before the selectbox below is instantiated.
+if "pending_customer" in st.session_state:
+    st.session_state.customer_select = st.session_state.pop("pending_customer")
+
 with st.sidebar:
     st.header("Customer")
 
-    selected = st.selectbox("Select customer", customer_names)
+    selected = st.selectbox(
+        "Select customer",
+        customer_names,
+        key="customer_select",
+    )
 
     customer = next(
         c for c in customers_data["customers"] if c["name"] == selected
@@ -109,37 +119,65 @@ if "messages" not in st.session_state:
 # ============================================================
 st.subheader("Try a scenario")
 
+# Each scenario is a list of turns, played in order. Meher's two asks are
+# separate turns because the data pack describes them that way, and because
+# one combined message would only ever surface whichever rule fires first.
 scenario_prompts = {
-    "Priya Nair": (
-        "My flight SK-204 is cancelled. I want a full cash refund "
-        "plus a free upgrade to business class on my return flight."
-    ),
-    "Arvind Kulkarni": (
-        "SK-118 is delayed 4 hours. I want hotel accommodation."
-    ),
-    "Meher Kaur": (
-        "SK-305 is delayed 6 hours. I want a full night's hotel stay "
-        "and to move to a higher-fare flight. The fare difference is £2,000."
-    ),
+    "Priya Nair": [
+        "My flight SK-204 is cancelled. What can you do for me?",
+        "I'm furious. I want a full cash refund plus a free upgrade "
+        "to business class on my return flight for the trouble.",
+    ],
+    "Arvind Kulkarni": [
+        "SK-118 is delayed 4 hours and I'm missing a connecting meeting. "
+        "I want hotel accommodation since it's been such a long delay.",
+    ],
+    "Meher Kaur": [
+        "SK-305 is delayed 6 hours. I want a full night's hotel stay, "
+        "not just coverage for the delayed hours.",
+        "Then move me onto a different, higher-fare flight instead of "
+        "waiting. The fare difference is ₹2,000.",
+    ],
 }
 
 c1, c2, c3 = st.columns(3)
 
+def start_scenario(customer_name: str) -> None:
+    """
+    Switch to that scenario's customer and queue their turns.
+
+    Both are needed: sending Meher's message while Priya is selected would
+    answer it against Priya's booking.
+    """
+
+    st.session_state.pending_customer = customer_name
+    st.session_state.pending_prompts = list(scenario_prompts[customer_name])
+    st.rerun()
+
+
 with c1:
     if st.button("Scenario 1 — Priya", use_container_width=True):
-        st.session_state.pending_prompt = scenario_prompts["Priya Nair"]
+        start_scenario("Priya Nair")
 with c2:
     if st.button("Scenario 2 — Arvind", use_container_width=True):
-        st.session_state.pending_prompt = scenario_prompts["Arvind Kulkarni"]
+        start_scenario("Arvind Kulkarni")
 with c3:
     if st.button("Scenario 3 — Meher", use_container_width=True):
-        st.session_state.pending_prompt = scenario_prompts["Meher Kaur"]
+        start_scenario("Meher Kaur")
 
 
 # ============================================================
-# PROCESS PENDING DEMO PROMPT
+# PROCESS PENDING DEMO TURNS
+#
+# One turn per rerun, so each answer is generated against the
+# history the turns before it produced.
 # ============================================================
-pending = st.session_state.pop("pending_prompt", None)
+queued = st.session_state.get("pending_prompts") or []
+
+pending = queued.pop(0) if queued else None
+
+if not queued:
+    st.session_state.pop("pending_prompts", None)
 
 if pending:
     st.session_state.messages.append({"role": "user", "content": pending})
@@ -156,6 +194,7 @@ if pending:
         "escalation_category": result["escalation_category"],
         "rule_ids": result["rule_ids"],
         "actions": result["actions"],
+        "partial_grant": result.get("partial_grant", False),
         "llm_used": result["llm_used"],
     })
     st.rerun()
@@ -173,7 +212,12 @@ for message in st.session_state.messages:
             st.write(message["content"])
     else:
         with st.chat_message("assistant"):
-            if message.get("escalated"):
+            if message.get("partial_grant"):
+                st.warning(
+                    "⚖️ Entitlement applied • excess escalated: "
+                    + str(message.get("escalation_category", "human review"))
+                )
+            elif message.get("escalated"):
                 st.error(
                     "⚠️ Escalated: "
                     + str(message.get("escalation_category", "human review"))
@@ -204,6 +248,7 @@ if prompt:
         "escalation_category": result["escalation_category"],
         "rule_ids": result["rule_ids"],
         "actions": result["actions"],
+        "partial_grant": result.get("partial_grant", False),
         "llm_used": result["llm_used"],
     })
     st.rerun()
@@ -224,5 +269,6 @@ with st.expander("🔍 Technical decision trace"):
                     "escalation_category": message.get("escalation_category"),
                     "rule_ids": message.get("rule_ids"),
                     "allowed_actions": message.get("actions"),
+                    "partial_grant": message.get("partial_grant"),
                     "llm_used": message.get("llm_used"),
                 })

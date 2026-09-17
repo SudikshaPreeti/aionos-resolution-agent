@@ -172,12 +172,12 @@ class Orchestrator:
 
             if (
                 re.search(
-                    r"(£|gbp|\bpounds?\b)\s*[0-9]",
+                    r"(₹|\brs\.?\b|\binr\b|\brupees?\b)\s*[0-9]",
                     text,
                 )
                 or re.search(
                     r"\b[0-9][0-9,]*\s*"
-                    r"(?:pounds?|gbp)\b",
+                    r"(?:rupees?|rs\.?|inr)\b",
                     text,
                 )
             ):
@@ -313,6 +313,68 @@ class Orchestrator:
 
         if guardrail.triggered:
 
+            # --------------------------------------------------
+            # PARTIAL GRANT
+            #
+            # The request exceeds policy, but a stated entitlement
+            # still applies to the same disruption. Grant the
+            # entitled portion, escalate only the excess.
+            #
+            # Still no LLM call: the excess is an escalation.
+            # --------------------------------------------------
+
+            if guardrail.partial_grant:
+
+                entitlement = self.policy.evaluate(
+                    "delay",
+
+                    customer,
+
+                    booking,
+
+                    {},
+                )
+
+                if entitlement.outcome == "allowed":
+
+                    response = (
+                        self.responses.partial_grant_response(
+                            customer_name,
+                            customer,
+                            booking,
+                            entitlement,
+                            guardrail,
+                        )
+                    )
+
+                    return {
+                        "response": response,
+
+                        "intent": "delay",
+
+                        "escalated": True,
+
+                        "escalation_category":
+                            guardrail.category,
+
+                        "escalation_reason":
+                            guardrail.reason,
+
+                        "rule_ids":
+                            entitlement.rule_ids,
+
+                        "actions":
+                            entitlement.allowed_actions,
+
+                        "partial_grant": True,
+
+                        "llm_used": False,
+
+                        "customer": customer,
+
+                        "booking": booking,
+                    }
+
             decision_intent = (
                 guardrail.category
                 or "beyond_policy"
@@ -355,6 +417,8 @@ class Orchestrator:
                     decision.rule_ids,
 
                 "actions": [],
+
+                "partial_grant": False,
 
                 "llm_used": False,
 
@@ -425,6 +489,8 @@ class Orchestrator:
                     decision.rule_ids,
 
                 "actions": [],
+
+                "partial_grant": False,
 
                 "llm_used": False,
 
@@ -501,6 +567,8 @@ class Orchestrator:
 
             "actions":
                 decision.allowed_actions,
+
+            "partial_grant": False,
 
             "llm_used":
                 self.llm.enabled(),
